@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage";
 import HomePage from "./pages/HomePage";
 import PeoplePage from "./pages/PeoplePage";
 import ECRNPage from "./pages/ECRNPage";
+import ECRNDetailPage from "./pages/ECRNDetailPage";
 import { useEffect, useState } from "react";
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
           <Route path="home" element={<HomePage />} />
           <Route path="people" element={<PeoplePage />} />
           <Route path="ecrn" element={<ECRNPage />} />
+          <Route path="ecrn/:id" element={<ECRNDetailPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

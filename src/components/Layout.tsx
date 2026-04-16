@@ -9,11 +9,13 @@ interface LayoutProps {
 
 export default function Layout({ isDarkMode, toggleDarkMode }: LayoutProps) {
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <Header isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />
-      <div className="container mx-auto px-4 py-6">
-        <NavTabs />
-        <main className="mt-6">
+      <div className="container mx-auto px-8 py-8">
+        <div className="flex justify-start">
+          <NavTabs />
+        </div>
+        <main className="mt-10">
           <Outlet />
         </main>
       </div>
