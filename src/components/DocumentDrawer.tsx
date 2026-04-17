@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, writeBatch, serverTimestamp, increment, arrayUnion } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import type { Document, DocumentStatus } from "../types";
 import { X, Check, User, ArrowRight, Loader2 } from "lucide-react";
 
@@ -18,6 +18,9 @@ export default function DocumentDrawer({ ecrnId, docId, onClose }: DocumentDrawe
   const [updating, setUpdating] = useState(false);
   const [showHoursCapture, setShowHoursCapture] = useState(false);
   const [actualHours, setActualHours] = useState<number>(0);
+
+  const currentUser = auth.currentUser;
+  const currentUserName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "Unknown User";
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, `ecrns/${ecrnId}/documents`, docId), (snap) => {
@@ -55,7 +58,7 @@ export default function DocumentDrawer({ ecrnId, docId, onClose }: DocumentDrawe
       const historyUpdate = {
         status: nextStatus,
         changedAt: serverTimestamp(),
-        changedBy: "Admin" // Replace with actual user
+        changedBy: currentUserName
       };
 
       const updates: any = {
@@ -126,7 +129,6 @@ export default function DocumentDrawer({ ecrnId, docId, onClose }: DocumentDrawe
               {STAGES.map((stage, i) => {
                 const isCompleted = i < currentStageIndex;
                 const isCurrent = i === currentStageIndex;
-                const isFuture = i > currentStageIndex;
 
                 return (
                   <div key={stage} className="flex flex-col items-center gap-3 relative group">

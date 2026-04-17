@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { collection, query, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN } from "../types";
-import { Plus, CheckCircle, Clock, AlertCircle, HelpCircle, ArrowRight, Database } from "lucide-react";
+import { Plus, CheckCircle, Clock, AlertCircle, HelpCircle, ArrowRight, Database, Download, TrendingUp } from "lucide-react";
 import StartECRNWizard from "../components/StartECRNWizard";
 import CloseECRNModal from "../components/CloseECRNModal";
 import { seedMockData } from "../services/seedService";
 import { useNavigate } from "react-router-dom";
+import { exportECRNSummary } from "../utils/excelExport";
 
 export default function HomePage() {
   const [ecrns, setEcrns] = useState<ECRN[]>([]);
@@ -15,11 +16,13 @@ export default function HomePage() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const navigate = useNavigate();
+  const [allEcrnsForExport, setAllEcrnsForExport] = useState<ECRN[]>([]);
   const [stats, setStats] = useState({
     Running: 0,
     Completed: 0,
     "With PE": 0,
     "Query Hold": 0,
+    Pending: 0,
   });
 
   useEffect(() => {
@@ -27,6 +30,7 @@ export default function HomePage() {
     const q = query(collection(db, "ecrns"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const allEcrns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ECRN));
+      setAllEcrnsForExport(allEcrns);
       
       // Update stats
       const newStats = {
@@ -34,11 +38,12 @@ export default function HomePage() {
         Completed: allEcrns.filter(e => e.status === "Completed").length,
         "With PE": allEcrns.filter(e => e.status === "With PE").length,
         "Query Hold": allEcrns.filter(e => e.status === "Query Hold").length,
+        Pending: allEcrns.filter(e => e.status === "Pending").length,
       };
       setStats(newStats);
 
       // Filter and sort running ECRNs for the table
-      const running = allEcrns.filter(e => e.status === "Running");
+      const running = allEcrns.filter(e => e.status === "Running" || e.status === "Pending");
       
       // Priority sorting logic: High -> Normal
       const priorityMap = { "High": 2, "Normal": 1 };
@@ -82,6 +87,14 @@ export default function HomePage() {
         </div>
         <div className="flex items-center gap-4">
           <button 
+            onClick={() => exportECRNSummary(allEcrnsForExport)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-750 transition-all shadow-sm active:scale-95"
+            title="Export to Excel"
+          >
+            <Download size={18} />
+            Export
+          </button>
+          <button 
             onClick={async () => {
               setSeeding(true);
               await seedMockData();
@@ -120,11 +133,17 @@ export default function HomePage() {
       )}
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+        <StatCard 
+          title="Pending" 
+          count={stats.Pending} 
+          icon={Clock} 
+          colorClass="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400" 
+        />
         <StatCard 
           title="Running" 
           count={stats.Running} 
-          icon={Clock} 
+          icon={TrendingUp} 
           colorClass="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" 
         />
         <StatCard 

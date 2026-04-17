@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, onSnapshot, collection, query, orderBy } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, orderBy, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import type { ECRN, Document } from "../types";
-import { ChevronLeft, Clock, User, Calendar, FileText, ChevronRight, CheckCircle2, AlertCircle, TrendingUp, Layers } from "lucide-react";
+import type { ECRN, Document, ECRNStatus } from "../types";
+import { ChevronLeft, Clock, User, Calendar, ChevronRight, CheckCircle2, AlertCircle, TrendingUp, Layers, Download, MoreHorizontal, FileText } from "lucide-react";
 import DocumentDrawer from "../components/DocumentDrawer";
+import { exportECRNDetail, generateECRNPDF } from "../utils/excelExport";
 
 export default function ECRNDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +14,7 @@ export default function ECRNDetailPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -37,6 +39,25 @@ export default function ECRNDetailPage() {
     };
   }, [id, navigate]);
 
+  const handleUpdateStatus = async (newStatus: ECRNStatus) => {
+    if (!id || updatingStatus) return;
+    setUpdatingStatus(true);
+    try {
+      const updateData: any = { status: newStatus };
+      if (newStatus === "Completed") {
+        updateData.closedAt = serverTimestamp();
+      }
+      await updateDoc(doc(db, "ecrns", id), updateData);
+    } catch (err) {
+      console.error("Failed to update status:", err);
+      alert("Error updating status.");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleCloseECRN = () => handleUpdateStatus("Completed");
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4 text-slate-400">
@@ -49,7 +70,7 @@ export default function ECRNDetailPage() {
   if (!ecrn) return null;
 
   const allCompleted = ecrn.completedDocuments === ecrn.totalDocuments;
-  const progressPercent = Math.round((ecrn.completedDocuments / ecrn.totalDocuments) * 100);
+  const progressPercent = Math.round((ecrn.completedDocuments / (ecrn.totalDocuments || 1)) * 100);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-700">
@@ -67,13 +88,47 @@ export default function ECRNDetailPage() {
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{ecrn.ecrnNumber}</h2>
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                    ecrn.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30' :
-                    ecrn.status === 'Running' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border border-blue-100 dark:border-blue-800/30' :
-                    'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30'
-                  }`}>
-                    {ecrn.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      ecrn.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30' :
+                      ecrn.status === 'Running' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border border-blue-100 dark:border-blue-800/30' :
+                      ecrn.status === 'Pending' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700' :
+                      ecrn.status === 'Query Hold' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30' :
+                      'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 border border-purple-100 dark:border-purple-800/30'
+                    }`}>
+                      {ecrn.status}
+                    </span>
+                    
+                    {/* Status Dropdown/Actions */}
+                    {ecrn.status !== 'Completed' && (
+                      <div className="flex items-center gap-1 ml-2">
+                         {["Running", "Pending", "With PE", "Query Hold"].filter(s => s !== ecrn.status).map(status => (
+                           <button
+                            key={status}
+                            onClick={() => handleUpdateStatus(status as ECRNStatus)}
+                            disabled={updatingStatus}
+                            className="text-[9px] font-bold px-2 py-1 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
+                           >
+                             {status}
+                           </button>
+                         ))}
+                      </div>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => exportECRNDetail(ecrn, documents)}
+                    className="ml-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border border-slate-100 dark:border-slate-750 text-slate-400 hover:text-blue-600"
+                    title="Export Report (Excel)"
+                  >
+                    <Download size={18} />
+                  </button>
+                  <button 
+                    onClick={() => generateECRNPDF(ecrn, documents)}
+                    className="ml-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border border-slate-100 dark:border-slate-750 text-slate-400 hover:text-red-600"
+                    title="Generate PDF Summary"
+                  >
+                    <FileText size={18} />
+                  </button>
                 </div>
                 <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">Project Workflow Details</p>
               </div>
@@ -144,8 +199,12 @@ export default function ECRNDetailPage() {
             <div className="p-3 bg-white/20 rounded-2xl"><CheckCircle2 size={24} /></div>
             <p className="font-bold tracking-tight text-lg">All documents are completed. Ready to close this ECRN?</p>
           </div>
-          <button className="w-full sm:w-auto px-8 py-3 bg-white text-emerald-700 font-black rounded-xl hover:bg-emerald-50 transition-all shadow-md active:scale-95">
-            Close Now
+          <button 
+            onClick={handleCloseECRN}
+            disabled={updatingStatus}
+            className="w-full sm:w-auto px-8 py-3 bg-white text-emerald-700 font-black rounded-xl hover:bg-emerald-50 transition-all shadow-md active:scale-95 disabled:opacity-50"
+          >
+            {updatingStatus ? "Closing..." : "Close Now"}
           </button>
         </div>
       )}
@@ -188,7 +247,7 @@ export default function ECRNDetailPage() {
                       <div className="w-8 h-8 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-[10px] font-black border border-blue-100/50 dark:border-blue-900/30">
                         {doc.assignedEngineerName.split(' ').map(n => n[0]).join('')}
                       </div>
-                      <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{doc.assignedEngineerName}</span>
+                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{doc.assignedEngineerName}</span>
                     </div>
                   </td>
                   <td className="px-8 py-5 text-center">

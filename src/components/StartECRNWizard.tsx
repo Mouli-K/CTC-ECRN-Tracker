@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { collection, query, getDocs, writeBatch, doc, serverTimestamp, Timestamp } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import type { Engineer, Priority } from "../types";
 import { X, ChevronRight, ChevronLeft, Loader2, Info } from "lucide-react";
 
@@ -12,6 +12,9 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [engineers, setEngineers] = useState<Engineer[]>([]);
+  
+  const currentUser = auth.currentUser;
+  const currentUserName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "Unknown User";
   
   // Step 1 Data
   const [ecrnDetails, setEcrnDetails] = useState({
@@ -83,7 +86,7 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
           statusHistory: [{
             status: "WIP",
             changedAt: serverTimestamp(),
-            changedBy: "Admin" // Replace with actual user name from auth later
+            changedBy: currentUserName
           }],
           createdAt: serverTimestamp(),
           completedAt: null
