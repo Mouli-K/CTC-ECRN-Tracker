@@ -14,7 +14,6 @@ export default function Header({ isDarkMode, toggleDarkMode }: HeaderProps) {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      navigate("/login");
     } catch (err) {
       console.error("Sign out error:", err);
     }

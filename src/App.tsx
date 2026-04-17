@@ -52,10 +52,13 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public Route */}
         <Route 
           path="/login" 
           element={user ? <Navigate to="/home" replace /> : <LoginPage />} 
         />
+
+        {/* Protected Routes Wrapper */}
         <Route 
           path="/" 
           element={user ? <Layout isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} /> : <Navigate to="/login" replace />}
@@ -66,6 +69,8 @@ function App() {
           <Route path="ecrn" element={<ECRNPage />} />
           <Route path="ecrn/:id" element={<ECRNDetailPage />} />
         </Route>
+
+        {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
