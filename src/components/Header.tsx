@@ -1,4 +1,7 @@
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, LogOut } from "lucide-react";
+import { auth } from "../firebase";
+import { signOut } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 
 interface HeaderProps {
   isDarkMode: boolean;
@@ -6,6 +9,17 @@ interface HeaderProps {
 }
 
 export default function Header({ isDarkMode, toggleDarkMode }: HeaderProps) {
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      navigate("/");
+    } catch (err) {
+      console.error("Sign out error:", err);
+    }
+  };
+
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 transition-colors duration-300">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
@@ -17,7 +31,7 @@ export default function Header({ isDarkMode, toggleDarkMode }: HeaderProps) {
           </div>
         </div>
         
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
           <button
             onClick={toggleDarkMode}
             className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750 transition-all duration-200 border border-slate-200 dark:border-slate-700 shadow-sm"
@@ -25,8 +39,16 @@ export default function Header({ isDarkMode, toggleDarkMode }: HeaderProps) {
           >
             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button>
+
+          <button
+            onClick={handleSignOut}
+            className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 border border-slate-200 dark:border-slate-700 shadow-sm"
+            title="Sign Out"
+          >
+            <LogOut size={20} />
+          </button>
           
-          <div className="flex items-center gap-3 pl-6 border-l border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-800">
             <div className="h-10 w-28 bg-slate-900 dark:bg-white flex items-center justify-center rounded-lg shadow-sm">
                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white dark:text-slate-900">Emerson</span>
             </div>
