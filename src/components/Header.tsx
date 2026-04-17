@@ -1,7 +1,6 @@
 import { Sun, Moon, LogOut } from "lucide-react";
 import { auth } from "../firebase";
 import { signOut } from "firebase/auth";
-import { useNavigate } from "react-router-dom";
 
 interface HeaderProps {
   isDarkMode: boolean;
@@ -9,8 +8,6 @@ interface HeaderProps {
 }
 
 export default function Header({ isDarkMode, toggleDarkMode }: HeaderProps) {
-  const navigate = useNavigate();
-
   const handleSignOut = async () => {
     try {
       await signOut(auth);
