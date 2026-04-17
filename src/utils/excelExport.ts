@@ -30,7 +30,7 @@ export const generateECRNPDF = (ecrn: ECRN, documents: Document[]) => {
       ["Progress", `${Math.round((ecrn.completedDocuments / ecrn.totalDocuments) * 100)}% (${ecrn.completedDocuments}/${ecrn.totalDocuments} Docs)`]
     ],
     theme: 'striped',
-    headStyles: { fillStyle: 'DF', fillColor: [37, 99, 235], textColor: [255, 255, 255] }, // blue-600
+    headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255] }, // blue-600
   });
 
   // Documents Table

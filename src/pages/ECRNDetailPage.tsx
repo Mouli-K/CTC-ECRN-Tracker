@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { doc, onSnapshot, collection, query, orderBy, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN, Document, ECRNStatus } from "../types";
-import { ChevronLeft, Clock, User, Calendar, ChevronRight, CheckCircle2, AlertCircle, TrendingUp, Layers, Download, MoreHorizontal, FileText } from "lucide-react";
+import { ChevronLeft, Clock, User, Calendar, ChevronRight, CheckCircle2, AlertCircle, TrendingUp, Layers, Download, FileText } from "lucide-react";
 import DocumentDrawer from "../components/DocumentDrawer";
 import { exportECRNDetail, generateECRNPDF } from "../utils/excelExport";
 

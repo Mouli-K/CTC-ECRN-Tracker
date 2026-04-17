@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import { Lock, User, ShieldCheck } from "lucide-react";
