@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import { collection, query, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN } from "../types";
-import { Plus, CheckCircle, Clock, AlertCircle, HelpCircle, ArrowRight, Database, Download, TrendingUp } from "lucide-react";
+import { Plus, CheckCircle, Clock, AlertCircle, HelpCircle, ArrowRight, Download, TrendingUp } from "lucide-react";
 import StartECRNWizard from "../components/StartECRNWizard";
 import CloseECRNModal from "../components/CloseECRNModal";
-import { seedMockData } from "../services/seedService";
 import { useNavigate } from "react-router-dom";
 import { exportECRNSummary } from "../utils/excelExport";
 
@@ -14,7 +13,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [showStartWizard, setShowStartWizard] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
-  const [seeding, setSeeding] = useState(false);
   const navigate = useNavigate();
   const [allEcrnsForExport, setAllEcrnsForExport] = useState<ECRN[]>([]);
   const [stats, setStats] = useState({
@@ -93,19 +91,6 @@ export default function HomePage() {
           >
             <Download size={18} />
             Export
-          </button>
-          <button 
-            onClick={async () => {
-              setSeeding(true);
-              await seedMockData();
-              setSeeding(false);
-            }}
-            disabled={seeding}
-            className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-750 transition-all shadow-sm active:scale-95 disabled:opacity-50"
-            title="Seed Mock Data"
-          >
-            <Database size={18} />
-            {seeding ? "Seeding..." : "Seed Mock"}
           </button>
           <button 
             onClick={() => setShowCloseModal(true)}

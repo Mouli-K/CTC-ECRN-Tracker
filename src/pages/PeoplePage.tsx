@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Engineer } from "../types";
-import { Search, UserCheck, UserMinus, SearchCheck, Briefcase, CheckCircle2, User, Hash, ExternalLink, Download } from "lucide-react";
+import { Search, UserCheck, UserMinus, SearchCheck, Briefcase, CheckCircle2, User, Hash, ExternalLink, Download, Plus, X, Loader2 } from "lucide-react";
 import EngineerDetailDrawer from "../components/EngineerDetailDrawer";
 import { exportEngineerWorkload } from "../utils/excelExport";
 
@@ -11,6 +11,11 @@ export default function PeoplePage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEngineerUid, setSelectedEngineerUid] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  
+  // New Engineer Form State
+  const [newEng, setNewEng] = useState({ name: "", employeeId: "", email: "" });
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, "engineers"));
@@ -20,6 +25,30 @@ export default function PeoplePage() {
     });
     return () => unsubscribe();
   }, []);
+
+  const handleAddEngineer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEng.name || !newEng.employeeId) return;
+    
+    setAdding(true);
+    try {
+      const uid = `eng_${Date.now()}`;
+      await setDoc(doc(db, "engineers", uid), {
+        uid,
+        ...newEng,
+        activeDocuments: 0,
+        completedDocuments: 0,
+        createdAt: serverTimestamp()
+      });
+      setShowAddModal(false);
+      setNewEng({ name: "", employeeId: "", email: "" });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add engineer.");
+    } finally {
+      setAdding(false);
+    }
+  };
 
   const filteredEngineers = engineers.filter(eng => {
     const search = searchQuery.toLowerCase();
@@ -125,6 +154,13 @@ export default function PeoplePage() {
         
         <div className="flex items-center gap-4">
           <button 
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-500/25 active:scale-95"
+          >
+            <Plus size={18} />
+            Add Engineer
+          </button>
+          <button 
             onClick={() => exportEngineerWorkload(filteredEngineers)}
             className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 font-bold rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm active:scale-95"
           >
@@ -145,6 +181,58 @@ export default function PeoplePage() {
           </div>
         </div>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[40px] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="px-10 py-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">New Engineer</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleAddEngineer} className="p-10 space-y-6">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Full Name</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="Ex: John Doe"
+                  className="w-full px-5 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:border-blue-500 font-bold"
+                  value={newEng.name}
+                  onChange={e => setNewEng({...newEng, name: e.target.value})}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Employee ID</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="Ex: E12345"
+                  className="w-full px-5 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:border-blue-500 font-bold"
+                  value={newEng.employeeId}
+                  onChange={e => setNewEng({...newEng, employeeId: e.target.value})}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Email Address</label>
+                <input 
+                  type="email" 
+                  placeholder="engineer@emerson.com"
+                  className="w-full px-5 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:border-blue-500 font-bold"
+                  value={newEng.email}
+                  onChange={e => setNewEng({...newEng, email: e.target.value})}
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={adding}
+                className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+              >
+                {adding ? <Loader2 className="animate-spin" /> : <><Plus size={18} /> Register Personnel</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="py-20 flex flex-col items-center gap-4 text-slate-400">
