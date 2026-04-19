@@ -47,7 +47,7 @@ export default function Header({ isDarkMode, toggleDarkMode }: HeaderProps) {
           
           <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-800">
             <div className="h-10 w-28 flex items-center justify-center">
-               <img src={emersonLogo} alt="Emerson Logo" className="h-7 w-auto object-contain dark:brightness-0 dark:invert transition-all duration-300" />
+               <img src={emersonLogo} alt="Emerson Logo" className="h-8 w-auto object-contain" />
             </div>
           </div>
         </div>
