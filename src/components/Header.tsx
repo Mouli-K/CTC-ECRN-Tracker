@@ -46,8 +46,8 @@ export default function Header({ isDarkMode, toggleDarkMode }: HeaderProps) {
           </button>
           
           <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-800">
-            <div className="h-10 w-28 bg-slate-900 dark:bg-white flex items-center justify-center rounded-lg shadow-sm">
-               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white dark:text-slate-900">Emerson</span>
+            <div className="h-10 w-28 flex items-center justify-center">
+               <img src={emersonLogo} alt="Emerson Logo" className="h-6 w-auto object-contain brightness-0 dark:brightness-200 transition-all duration-300" />
             </div>
           </div>
         </div>
