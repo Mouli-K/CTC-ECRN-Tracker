@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, getDocs, writeBatch, doc, Timestamp, increment } from "firebase/firestore";
+import { collection, query, getDocs, writeBatch, doc, Timestamp, increment, onSnapshot } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import type { Engineer, Priority } from "../types";
 import { X, ChevronRight, ChevronLeft, Loader2, Info, AlertTriangle } from "lucide-react";
@@ -35,12 +35,11 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
   }>>([{ documentNumber: "", assignedEngineerUid: "", estimatedHours: 1 }]);
 
   useEffect(() => {
-    const fetchEngineers = async () => {
-      const q = query(collection(db, "engineers"));
-      const snapshot = await getDocs(q);
+    const q = query(collection(db, "engineers"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       setEngineers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as Engineer)));
-    };
-    fetchEngineers();
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -74,6 +73,9 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
 
       batch.set(ecrnRef, ecrnData);
 
+      // Map to track total document counts per engineer in this batch
+      const engineerActiveCounts: Record<string, number> = {};
+
       documents.forEach(d => {
         const docRef = doc(collection(db, `ecrns/${ecrnRef.id}/documents`));
         const engineer = engineers.find(e => e.uid === d.assignedEngineerUid);
@@ -92,11 +94,15 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
           completedAt: null
         });
 
-        // Update engineer active count
         if (d.assignedEngineerUid) {
-          const engRef = doc(db, "engineers", d.assignedEngineerUid);
-          batch.update(engRef, { activeDocuments: increment(1) });
+          engineerActiveCounts[d.assignedEngineerUid] = (engineerActiveCounts[d.assignedEngineerUid] || 0) + 1;
         }
+      });
+
+      // Update engineer active counts atomically based on total docs assigned in this ECRN
+      Object.entries(engineerActiveCounts).forEach(([uid, count]) => {
+        const engRef = doc(db, "engineers", uid);
+        batch.update(engRef, { activeDocuments: increment(count) });
       });
 
       await batch.commit();

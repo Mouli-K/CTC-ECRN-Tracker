@@ -21,28 +21,26 @@ export default function EngineerDetailDrawer({ engineerUid, onClose }: EngineerD
       if (snap.exists()) setEngineer(snap.data() as Engineer);
     });
 
-    // Fetch all documents assigned to this engineer across all ECRNs
-    // We use collectionGroup for "documents" subcollections
-    const fetchDocs = async () => {
-      try {
-        const docsQuery = query(
-          collectionGroup(db, "documents"),
-          where("assignedEngineerUid", "==", engineerUid)
-        );
-        const snapshot = await getDocs(docsQuery);
-        const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Document));
-        
-        setActiveDocs(allDocs.filter(d => d.status !== "Completed"));
-        setCompletedDocs(allDocs.filter(d => d.status === "Completed"));
-        setLoading(false);
-      } catch (err) {
-        console.error("Error fetching engineer docs:", err);
-        setLoading(false);
-      }
-    };
+    // Real-time listener for all documents assigned to this engineer across all ECRNs
+    const docsQuery = query(
+      collectionGroup(db, "documents"),
+      where("assignedEngineerUid", "==", engineerUid)
+    );
 
-    fetchDocs();
-    return () => unsubEng();
+    const unsubDocs = onSnapshot(docsQuery, (snapshot) => {
+      const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Document));
+      setActiveDocs(allDocs.filter(d => d.status !== "Completed"));
+      setCompletedDocs(allDocs.filter(d => d.status === "Completed"));
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching engineer docs:", err);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubEng();
+      unsubDocs();
+    };
   }, [engineerUid]);
 
   if (!engineer && !loading) return null;
