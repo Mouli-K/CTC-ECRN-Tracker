@@ -266,20 +266,32 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
                           />
                         </td>
                         <td className="px-6 py-4">
-                          <select 
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl focus:border-blue-500 outline-none text-sm transition-all"
-                            value={d.assignedEngineerUid}
-                            onChange={e => {
-                              const next = [...documents];
-                              next[i].assignedEngineerUid = e.target.value;
-                              setDocuments(next);
-                            }}
-                          >
-                            <option value="">Select Engineer</option>
-                            {engineers.map(eng => (
-                              <option key={eng.uid} value={eng.uid}>{eng.name} ({eng.employeeId})</option>
-                            ))}
-                          </select>
+                          <div className="space-y-2">
+                            <select 
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl focus:border-blue-500 outline-none text-sm transition-all"
+                              value={d.assignedEngineerUid}
+                              onChange={e => {
+                                const next = [...documents];
+                                next[i].assignedEngineerUid = e.target.value;
+                                setDocuments(next);
+                              }}
+                            >
+                              <option value="">Select Engineer</option>
+                              {engineers.map(eng => (
+                                <option key={eng.uid} value={eng.uid}>
+                                  {eng.name} (Active: {eng.activeDocuments || 0})
+                                </option>
+                              ))}
+                            </select>
+                            
+                            {/* High Priority Warning - Visible if ECRN is High Priority AND Engineer is already busy */}
+                            {ecrnDetails.priority === 'High' && d.assignedEngineerUid && (engineers.find(e => e.uid === d.assignedEngineerUid)?.activeDocuments || 0) > 0 && (
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-lg border border-amber-100 dark:border-amber-800/30">
+                                <AlertTriangle size={12} />
+                                <span>High Workload Warning</span>
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 w-32">
                           <input 
