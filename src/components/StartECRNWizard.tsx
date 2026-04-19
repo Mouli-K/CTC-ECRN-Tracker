@@ -65,7 +65,7 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
       const ecrnData = {
         ...ecrnDetails,
         status: "Running",
-        createdAt: serverTimestamp(),
+        createdAt: Timestamp.now(),
         closedAt: null,
         totalDocuments: numDocs,
         completedDocuments: 0,
@@ -85,10 +85,10 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
           actualHours: null,
           statusHistory: [{
             status: "WIP",
-            changedAt: serverTimestamp(),
+            changedAt: Timestamp.now(),
             changedBy: currentUserName
           }],
-          createdAt: serverTimestamp(),
+          createdAt: Timestamp.now(),
           completedAt: null
         });
 

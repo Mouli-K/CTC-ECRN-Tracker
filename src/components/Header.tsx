@@ -1,6 +1,7 @@
 import { Sun, Moon, LogOut } from "lucide-react";
 import { auth } from "../firebase";
 import { signOut } from "firebase/auth";
+import emersonLogo from "../assets/emerson-logo.png";
 
 interface HeaderProps {
   isDarkMode: boolean;

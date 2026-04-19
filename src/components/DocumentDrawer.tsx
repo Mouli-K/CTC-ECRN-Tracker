@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { doc, onSnapshot, writeBatch, serverTimestamp, increment, arrayUnion } from "firebase/firestore";
+import { doc, onSnapshot, writeBatch, serverTimestamp, increment, arrayUnion, Timestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import type { Document, DocumentStatus } from "../types";
 import { X, Check, User, ArrowRight, Loader2 } from "lucide-react";
@@ -57,7 +57,7 @@ export default function DocumentDrawer({ ecrnId, docId, onClose }: DocumentDrawe
 
       const historyUpdate = {
         status: nextStatus,
-        changedAt: serverTimestamp(),
+        changedAt: Timestamp.now(),
         changedBy: currentUserName
       };
 
