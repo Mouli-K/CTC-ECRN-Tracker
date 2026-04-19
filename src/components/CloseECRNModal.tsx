@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp, increment } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN } from "../types";
 import { X, Loader2, AlertTriangle, CheckCircle } from "lucide-react";
@@ -32,9 +32,29 @@ export default function CloseECRNModal({ onClose }: CloseECRNModalProps) {
       const batch = writeBatch(db);
       const ecrnRef = doc(db, "ecrns", selectedEcrnId);
       
+      // 1. Mark ECRN as Completed
       batch.update(ecrnRef, {
         status: "Completed",
         closedAt: serverTimestamp()
+      });
+
+      // 2. Fetch all documents in this ECRN to update engineer stats
+      const docsSnap = await getDocs(collection(db, `ecrns/${selectedEcrnId}/documents`));
+      const docs = docsSnap.docs.map(d => d.data());
+
+      // 3. For each document that wasn't completed, decrement the engineer's active count
+      const engineerUpdates: Record<string, number> = {};
+      docs.forEach(d => {
+        if (d.status !== "Completed" && d.assignedEngineerUid) {
+          engineerUpdates[d.assignedEngineerUid] = (engineerUpdates[d.assignedEngineerUid] || 0) + 1;
+        }
+      });
+
+      Object.entries(engineerUpdates).forEach(([uid, count]) => {
+        const engRef = doc(db, "engineers", uid);
+        batch.update(engRef, {
+          activeDocuments: increment(-count)
+        });
       });
 
       await batch.commit();

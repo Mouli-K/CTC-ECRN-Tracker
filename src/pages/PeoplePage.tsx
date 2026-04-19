@@ -241,21 +241,33 @@ export default function PeoplePage() {
         </div>
       ) : (
         <div className="space-y-12">
-          <EngineerList 
-            list={filteredEngineers.filter(e => e.activeDocuments > 0)}
-            title="Engaged Engineers"
-            icon={UserMinus}
-            colorClass="text-amber-500"
-            badgeClass="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800/30"
-          />
-          
-          <EngineerList 
-            list={filteredEngineers.filter(e => e.activeDocuments === 0)}
-            title="Available Personnel"
-            icon={UserCheck}
-            colorClass="text-emerald-500"
-            badgeClass="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30"
-          />
+          {searchQuery ? (
+            <EngineerList 
+              list={filteredEngineers}
+              title="Search Results"
+              icon={Search}
+              colorClass="text-blue-500"
+              badgeClass="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-800/30"
+            />
+          ) : (
+            <>
+              <EngineerList 
+                list={engineers.filter(e => (e.activeDocuments || 0) > 0)}
+                title="Engaged Engineers"
+                icon={UserMinus}
+                colorClass="text-amber-500"
+                badgeClass="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800/30"
+              />
+
+              <EngineerList 
+                list={engineers.filter(e => (e.activeDocuments || 0) <= 0)}
+                title="Available Personnel"
+                icon={UserCheck}
+                colorClass="text-emerald-500"
+                badgeClass="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30"
+              />
+            </>
+          )}
         </div>
       )}
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, onSnapshot, collection, query, orderBy, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, orderBy, updateDoc, serverTimestamp, getDocs, writeBatch, increment } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN, Document, ECRNStatus } from "../types";
 import { ChevronLeft, Clock, User, Calendar, ChevronRight, CheckCircle2, AlertCircle, TrendingUp, Layers, Download, FileText } from "lucide-react";
@@ -43,11 +43,34 @@ export default function ECRNDetailPage() {
     if (!id || updatingStatus) return;
     setUpdatingStatus(true);
     try {
+      const batch = writeBatch(db);
+      const ecrnRef = doc(db, "ecrns", id);
+      
       const updateData: any = { status: newStatus };
       if (newStatus === "Completed") {
         updateData.closedAt = serverTimestamp();
+        
+        // Decrement active counts for all engineers who have unfinished docs in this ECRN
+        const docsSnap = await getDocs(collection(db, `ecrns/${id}/documents`));
+        const docs = docsSnap.docs.map(d => d.data());
+        
+        const engineerUpdates: Record<string, number> = {};
+        docs.forEach(d => {
+          if (d.status !== "Completed" && d.assignedEngineerUid) {
+            engineerUpdates[d.assignedEngineerUid] = (engineerUpdates[d.assignedEngineerUid] || 0) + 1;
+          }
+        });
+
+        Object.entries(engineerUpdates).forEach(([uid, count]) => {
+          const engRef = doc(db, "engineers", uid);
+          batch.update(engRef, {
+            activeDocuments: increment(-count)
+          });
+        });
       }
-      await updateDoc(doc(db, "ecrns", id), updateData);
+      
+      batch.update(ecrnRef, updateData);
+      await batch.commit();
     } catch (err) {
       console.error("Failed to update status:", err);
       alert("Error updating status.");

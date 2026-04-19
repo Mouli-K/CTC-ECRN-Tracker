@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, getDocs, writeBatch, doc, Timestamp } from "firebase/firestore";
+import { collection, query, getDocs, writeBatch, doc, Timestamp, increment } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import type { Engineer, Priority } from "../types";
 import { X, ChevronRight, ChevronLeft, Loader2, Info } from "lucide-react";
@@ -95,8 +95,7 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
         // Update engineer active count
         if (d.assignedEngineerUid) {
           const engRef = doc(db, "engineers", d.assignedEngineerUid);
-          const currentCount = engineer?.activeDocuments || 0;
-          batch.update(engRef, { activeDocuments: currentCount + 1 });
+          batch.update(engRef, { activeDocuments: increment(1) });
         }
       });
 
