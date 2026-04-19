@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, onSnapshot, collection, query, orderBy, updateDoc, serverTimestamp, getDocs, writeBatch, increment } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, orderBy } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN, Document, ECRNStatus } from "../types";
-import { ChevronLeft, Clock, User, Calendar, ChevronRight, CheckCircle2, AlertCircle, TrendingUp, Layers, Download, FileText } from "lucide-react";
+import { ChevronLeft, Clock, User, Calendar, ChevronRight, CheckCircle2, AlertCircle, TrendingUp, Layers, Download, FileText, Trash2 } from "lucide-react";
 import DocumentDrawer from "../components/DocumentDrawer";
 import { exportECRNDetail, generateECRNPDF } from "../utils/excelExport";
+import { normalizePriority } from "../services/trackerData";
+import { deleteEcrn, updateEcrnStatus } from "../services/trackerWorkflow";
 
 export default function ECRNDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,6 +17,8 @@ export default function ECRNDetailPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [deletingEcrn, setDeletingEcrn] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -42,44 +46,44 @@ export default function ECRNDetailPage() {
   const handleUpdateStatus = async (newStatus: ECRNStatus) => {
     if (!id || updatingStatus) return;
     setUpdatingStatus(true);
+    setActionError("");
     try {
-      const batch = writeBatch(db);
-      const ecrnRef = doc(db, "ecrns", id);
-      
-      const updateData: any = { status: newStatus };
-      if (newStatus === "Completed") {
-        updateData.closedAt = serverTimestamp();
-        
-        // Decrement active counts for all engineers who have unfinished docs in this ECRN
-        const docsSnap = await getDocs(collection(db, `ecrns/${id}/documents`));
-        const docs = docsSnap.docs.map(d => d.data());
-        
-        const engineerUpdates: Record<string, number> = {};
-        docs.forEach(d => {
-          if (d.status !== "Completed" && d.assignedEngineerUid) {
-            engineerUpdates[d.assignedEngineerUid] = (engineerUpdates[d.assignedEngineerUid] || 0) + 1;
-          }
-        });
-
-        Object.entries(engineerUpdates).forEach(([uid, count]) => {
-          const engRef = doc(db, "engineers", uid);
-          batch.update(engRef, {
-            activeDocuments: increment(-count)
-          });
-        });
-      }
-      
-      batch.update(ecrnRef, updateData);
-      await batch.commit();
+      await updateEcrnStatus(id, newStatus);
     } catch (err) {
       console.error("Failed to update status:", err);
-      alert("Error updating status.");
+      setActionError("Error updating status.");
     } finally {
       setUpdatingStatus(false);
     }
   };
 
   const handleCloseECRN = () => handleUpdateStatus("Completed");
+  const handleDeleteECRN = async () => {
+    if (!id || deletingEcrn || !ecrn) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Delete ${ecrn.ecrnNumber}? This will permanently remove the ECRN and all of its documents.`,
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingEcrn(true);
+    setActionError("");
+
+    try {
+      await deleteEcrn(id);
+      navigate("/home");
+    } catch (error) {
+      console.error("Failed to delete ECRN:", error);
+      setActionError("Error deleting ECRN.");
+    } finally {
+      setDeletingEcrn(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -92,8 +96,17 @@ export default function ECRNDetailPage() {
 
   if (!ecrn) return null;
 
-  const allCompleted = ecrn.completedDocuments === ecrn.totalDocuments;
-  const progressPercent = Math.round((ecrn.completedDocuments / (ecrn.totalDocuments || 1)) * 100);
+  const totalDocuments = documents.length || ecrn.totalDocuments || 0;
+  const completedDocuments = documents.filter((document) => document.status === "Completed").length;
+  const allCompleted = totalDocuments > 0 && completedDocuments === totalDocuments;
+  const progressPercent = Math.round((completedDocuments / (totalDocuments || 1)) * 100);
+  const priorityLabel = normalizePriority(ecrn.priority);
+  const ecrnForExport = {
+    ...ecrn,
+    priority: priorityLabel,
+    totalDocuments,
+    completedDocuments,
+  };
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-700">
@@ -139,18 +152,29 @@ export default function ECRNDetailPage() {
                     )}
                   </div>
                   <button 
-                    onClick={() => exportECRNDetail(ecrn, documents)}
+                    onClick={() => exportECRNDetail(ecrnForExport, documents)}
                     className="ml-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border border-slate-100 dark:border-slate-750 text-slate-400 hover:text-blue-600"
                     title="Export Report (Excel)"
                   >
                     <Download size={18} />
                   </button>
                   <button 
-                    onClick={() => generateECRNPDF(ecrn, documents)}
+                    onClick={() => generateECRNPDF(ecrnForExport, documents)}
                     className="ml-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border border-slate-100 dark:border-slate-750 text-slate-400 hover:text-red-600"
                     title="Generate PDF Summary"
                   >
                     <FileText size={18} />
+                  </button>
+                  <button
+                    onClick={handleDeleteECRN}
+                    disabled={deletingEcrn}
+                    className="ml-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all disabled:opacity-50"
+                    title="Delete ECRN"
+                  >
+                    <Trash2 size={16} />
+                    <span className="text-xs font-black uppercase tracking-widest">
+                      {deletingEcrn ? "Deleting..." : "Delete ECRN"}
+                    </span>
                   </button>
                 </div>
                 <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">Project Workflow Details</p>
@@ -170,17 +194,21 @@ export default function ECRNDetailPage() {
               <div className="w-px h-10 bg-slate-200 dark:bg-slate-700 hidden sm:block" />
               <div className="hidden sm:flex flex-col gap-1">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Documents</span>
-                <span className="text-xl font-bold text-slate-700 dark:text-slate-200">{ecrn.completedDocuments} <span className="text-slate-400 font-medium">/ {ecrn.totalDocuments}</span></span>
+                <span className="text-xl font-bold text-slate-700 dark:text-slate-200">{completedDocuments} <span className="text-slate-400 font-medium">/ {totalDocuments}</span></span>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
-              <div className="p-2.5 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl"><AlertCircle size={18} /></div>
+              <div className={`p-2.5 rounded-xl ${
+                priorityLabel === "High"
+                  ? "bg-red-50 dark:bg-red-900/20 text-red-500"
+                  : "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500"
+              }`}><AlertCircle size={18} /></div>
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Priority</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{ecrn.priority}</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{priorityLabel}</p>
               </div>
             </div>
             <div className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
@@ -212,6 +240,12 @@ export default function ECRNDetailPage() {
                "{ecrn.reasonForChange}"
              </p>
           </div>
+
+          {actionError ? (
+            <div className="p-4 rounded-2xl border border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-950/20 text-sm font-bold text-red-600 dark:text-red-400">
+              {actionError}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -240,7 +274,7 @@ export default function ECRNDetailPage() {
             <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Documents Registry</h3>
           </div>
           <span className="text-[10px] font-black text-slate-400 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-lg uppercase tracking-widest border border-slate-100 dark:border-slate-750">
-            {documents.length} Total Items
+            {totalDocuments} Total Items
           </span>
         </div>
         

@@ -1,70 +1,40 @@
-import { useEffect, useState } from "react";
-import { collection, query, onSnapshot } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, collectionGroup, onSnapshot, query } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN } from "../types";
-import { Plus, CheckCircle, Clock, AlertCircle, HelpCircle, ArrowRight, Download, TrendingUp } from "lucide-react";
+import {
+  Plus,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  HelpCircle,
+  ArrowRight,
+  Download,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react";
 import StartECRNWizard from "../components/StartECRNWizard";
 import CloseECRNModal from "../components/CloseECRNModal";
 import { useNavigate } from "react-router-dom";
 import { exportECRNSummary } from "../utils/excelExport";
+import {
+  getDocumentEcrnIdFromPath,
+  mergeEcrnCounts,
+  normalizePriority,
+  sortEcrnsByPriorityAndDeadline,
+  type TrackerDocument,
+} from "../services/trackerData";
 
-export default function HomePage() {
-  const [ecrns, setEcrns] = useState<ECRN[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showStartWizard, setShowStartWizard] = useState(false);
-  const [showCloseModal, setShowCloseModal] = useState(false);
-  const navigate = useNavigate();
-  const [allEcrnsForExport, setAllEcrnsForExport] = useState<ECRN[]>([]);
-  const [stats, setStats] = useState({
-    Running: 0,
-    Completed: 0,
-    "With PE": 0,
-    "Query Hold": 0,
-    Pending: 0,
-  });
+interface StatCardProps {
+  title: string;
+  count: number;
+  icon: LucideIcon;
+  colorClass: string;
+}
 
-  useEffect(() => {
-    // Listener for ECRN stats and running table
-    const q = query(collection(db, "ecrns"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allEcrns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ECRN));
-      setAllEcrnsForExport(allEcrns);
-      
-      // Update stats
-      const newStats = {
-        Running: allEcrns.filter(e => e.status === "Running").length,
-        Completed: allEcrns.filter(e => e.status === "Completed").length,
-        "With PE": allEcrns.filter(e => e.status === "With PE").length,
-        "Query Hold": allEcrns.filter(e => e.status === "Query Hold").length,
-        Pending: allEcrns.filter(e => e.status === "Pending").length,
-      };
-      setStats(newStats);
-
-      // Filter and sort running ECRNs for the table
-      const running = allEcrns.filter(e => e.status === "Running" || e.status === "Pending");
-      
-      // Priority sorting logic: High -> Normal
-      const priorityMap = { "High": 2, "Normal": 1 };
-      running.sort((a, b) => {
-        const pA = priorityMap[a.priority] || 0;
-        const pB = priorityMap[b.priority] || 0;
-        if (pA !== pB) return pB - pA;
-        
-        // Secondary sort: Deadline ascending
-        const dA = a.deadline?.toMillis() || Infinity;
-        const dB = b.deadline?.toMillis() || Infinity;
-        return dA - dB;
-      });
-
-      setEcrns(running);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const StatCard = ({ title, count, icon: Icon, colorClass }: { title: string, count: number, icon: any, colorClass: string }) => (
-    <div className={`bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-all hover:shadow-md hover:translate-y-[-2px]`}>
+function StatCard({ title, count, icon: Icon, colorClass }: StatCardProps) {
+  return (
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-all hover:shadow-md hover:translate-y-[-2px]">
       <div>
         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{title}</p>
         <h3 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{count}</h3>
@@ -73,6 +43,68 @@ export default function HomePage() {
         <Icon size={24} />
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  const [rawEcrns, setRawEcrns] = useState<ECRN[]>([]);
+  const [documents, setDocuments] = useState<TrackerDocument[]>([]);
+  const [loadingEcrns, setLoadingEcrns] = useState(true);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
+  const [showStartWizard, setShowStartWizard] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const unsubscribeEcrns = onSnapshot(query(collection(db, "ecrns")), (snapshot) => {
+      setRawEcrns(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ECRN)));
+      setLoadingEcrns(false);
+    });
+
+    const unsubscribeDocuments = onSnapshot(
+      query(collectionGroup(db, "documents")),
+      (snapshot) => {
+        setDocuments(
+          snapshot.docs.map(
+            (docSnapshot) =>
+              ({
+                id: docSnapshot.id,
+                ecrnId: getDocumentEcrnIdFromPath(docSnapshot.ref.path),
+                ...docSnapshot.data(),
+              }) as TrackerDocument,
+          ),
+        );
+        setLoadingDocuments(false);
+      },
+    );
+
+    return () => {
+      unsubscribeEcrns();
+      unsubscribeDocuments();
+    };
+  }, []);
+
+  const loading = loadingEcrns || loadingDocuments;
+  const allEcrnsForExport = useMemo(
+    () => mergeEcrnCounts(rawEcrns, documents),
+    [documents, rawEcrns],
+  );
+  const ecrns = useMemo(
+    () =>
+      allEcrnsForExport
+        .filter((ecrn) => ecrn.status === "Running" || ecrn.status === "Pending")
+        .sort(sortEcrnsByPriorityAndDeadline),
+    [allEcrnsForExport],
+  );
+  const stats = useMemo(
+    () => ({
+      Running: allEcrnsForExport.filter((ecrn) => ecrn.status === "Running").length,
+      Completed: allEcrnsForExport.filter((ecrn) => ecrn.status === "Completed").length,
+      "With PE": allEcrnsForExport.filter((ecrn) => ecrn.status === "With PE").length,
+      "Query Hold": allEcrnsForExport.filter((ecrn) => ecrn.status === "Query Hold").length,
+      Pending: allEcrnsForExport.filter((ecrn) => ecrn.status === "Pending").length,
+    }),
+    [allEcrnsForExport],
   );
 
   return (
@@ -177,7 +209,10 @@ export default function HomePage() {
                   </td>
                 </tr>
               ) : (
-                ecrns.map((ecrn) => (
+                ecrns.map((ecrn) => {
+                  const priorityLabel = normalizePriority(ecrn.priority);
+
+                  return (
                   <tr 
                     key={ecrn.id} 
                     onClick={() => navigate(`/ecrn/${ecrn.id}`)}
@@ -186,10 +221,10 @@ export default function HomePage() {
                     <td className="px-8 py-5 font-bold text-slate-900 dark:text-white">{ecrn.ecrnNumber}</td>
                     <td className="px-8 py-5">
                       <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        ecrn.priority === 'High' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        priorityLabel === 'High' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                        'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                       }`}>
-                        {ecrn.priority}
+                        {priorityLabel}
                       </span>
                     </td>
                     <td className="px-8 py-5 text-sm text-slate-600 dark:text-slate-400">
@@ -201,20 +236,28 @@ export default function HomePage() {
                     </td>
                     <td className="px-8 py-5 min-w-[140px]">
                       <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mb-1.5 overflow-hidden">
-                        <div 
+                        <div
                           className="bg-blue-600 h-full rounded-full transition-all duration-1000 ease-out shadow-sm shadow-blue-500/30"
-                          style={{ width: `${(ecrn.completedDocuments / ecrn.totalDocuments) * 100}%` }}
+                          style={{
+                            width: `${Math.round(
+                              (ecrn.completedDocuments / (ecrn.totalDocuments || 1)) * 100,
+                            )}%`,
+                          }}
                         />
                       </div>
                       <span className="text-[10px] font-black text-slate-400 dark:text-slate-500">
-                        {Math.round((ecrn.completedDocuments / ecrn.totalDocuments) * 100)}% COMPLETE
+                        {Math.round(
+                          (ecrn.completedDocuments / (ecrn.totalDocuments || 1)) * 100,
+                        )}
+                        % COMPLETE
                       </span>
                     </td>
                     <td className="px-8 py-5 text-right">
                       <ArrowRight size={18} className="text-slate-300 group-hover:text-blue-500 transition-colors translate-x-[-10px] opacity-0 group-hover:opacity-100 group-hover:translate-x-0" />
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -2,9 +2,15 @@ import * as XLSX from "xlsx";
 import type { ECRN, Engineer, Document } from "../types";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { normalizePriority } from "../services/trackerData";
 
 export const generateECRNPDF = (ecrn: ECRN, documents: Document[]) => {
-  const doc = new jsPDF();
+  const priorityLabel = normalizePriority(ecrn.priority);
+  const doc = new jsPDF() as jsPDF & {
+    lastAutoTable?: {
+      finalY: number;
+    };
+  };
   
   // Header
   doc.setFontSize(20);
@@ -22,7 +28,7 @@ export const generateECRNPDF = (ecrn: ECRN, documents: Document[]) => {
     body: [
       ["ECRN Number", ecrn.ecrnNumber],
       ["Status", ecrn.status],
-      ["Priority", ecrn.priority],
+      ["Priority", priorityLabel],
       ["Product Engineer", ecrn.productEngineerName],
       ["Deadline", ecrn.deadline ? ecrn.deadline.toDate().toLocaleDateString() : "None"],
       ["Stock Action", ecrn.stockAction],
@@ -36,10 +42,10 @@ export const generateECRNPDF = (ecrn: ECRN, documents: Document[]) => {
   // Documents Table
   doc.setFontSize(14);
   doc.setTextColor(30, 41, 59);
-  doc.text("Documents Registry", 14, (doc as any).lastAutoTable.finalY + 15);
+  doc.text("Documents Registry", 14, (doc.lastAutoTable?.finalY ?? 40) + 15);
 
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 20,
+    startY: (doc.lastAutoTable?.finalY ?? 40) + 20,
     head: [["Doc Number", "Engineer", "Hours (E/A)", "Status"]],
     body: documents.map(d => [
       d.documentNumber,
@@ -51,7 +57,7 @@ export const generateECRNPDF = (ecrn: ECRN, documents: Document[]) => {
   });
 
   // Footer
-  const pageCount = (doc as any).internal.getNumberOfPages();
+  const pageCount = doc.internal.pages.length - 1;
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
@@ -65,7 +71,7 @@ export const generateECRNPDF = (ecrn: ECRN, documents: Document[]) => {
 export const exportECRNSummary = (ecrns: ECRN[]) => {
   const summaryData = ecrns.map(e => ({
     "ECRN Number": e.ecrnNumber,
-    "Priority": e.priority,
+    "Priority": normalizePriority(e.priority),
     "Deadline": e.deadline ? e.deadline.toDate().toLocaleDateString() : "—",
     "PE Name": e.productEngineerName,
     "Status": e.status,
@@ -78,14 +84,16 @@ export const exportECRNSummary = (ecrns: ECRN[]) => {
   const wsSummary = XLSX.utils.json_to_sheet(summaryData);
 
   // Auto-fit columns
-  const maxWidths = summaryData.reduce((acc: any, row: any) => {
-    Object.keys(row).forEach((key, i) => {
-      const val = row[key]?.toString() || "";
+  const maxWidths = summaryData.reduce<number[]>((acc, row) => {
+    const typedRow = row as Record<string, string | number>;
+
+    Object.keys(typedRow).forEach((key, i) => {
+      const val = typedRow[key]?.toString() || "";
       acc[i] = Math.max(acc[i] || 0, val.length, key.length);
     });
     return acc;
   }, []);
-  wsSummary["!cols"] = maxWidths.map((w: number) => ({ w: w + 2 }));
+  wsSummary["!cols"] = maxWidths.map((width) => ({ wch: width + 2 }));
 
   XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
   XLSX.writeFile(wb, `ECRN_Summary_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -108,10 +116,11 @@ export const exportEngineerWorkload = (engineers: Engineer[]) => {
 };
 
 export const exportECRNDetail = (ecrn: ECRN, documents: Document[]) => {
+  const priorityLabel = normalizePriority(ecrn.priority);
   const infoData = [
     ["Field", "Value"],
     ["ECRN Number", ecrn.ecrnNumber],
-    ["Priority", ecrn.priority],
+    ["Priority", priorityLabel],
     ["Status", ecrn.status],
     ["Product Engineer", ecrn.productEngineerName],
     ["Total Documents", ecrn.totalDocuments],

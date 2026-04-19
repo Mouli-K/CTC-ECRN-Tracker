@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
-import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp, increment } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN } from "../types";
 import { X, Loader2, AlertTriangle, CheckCircle } from "lucide-react";
+import { updateEcrnStatus } from "../services/trackerWorkflow";
 
 interface CloseECRNModalProps {
   onClose: () => void;
@@ -13,55 +14,37 @@ export default function CloseECRNModal({ onClose }: CloseECRNModalProps) {
   const [selectedEcrnId, setSelectedEcrnId] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
-    const fetchEcrns = async () => {
-      // Only ECRNs that are Running or With PE can be closed
-      const q = query(collection(db, "ecrns"), where("status", "in", ["Running", "With PE"]));
-      const snapshot = await getDocs(q);
-      setEcrns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ECRN)));
-      setFetching(false);
-    };
-    fetchEcrns();
+    const unsubscribe = onSnapshot(
+      query(collection(db, "ecrns"), where("status", "in", ["Running", "With PE"])),
+      (snapshot) => {
+        setEcrns(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ECRN)));
+        setFetching(false);
+      },
+      () => {
+        setFetching(false);
+      },
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const handleCloseECRN = async () => {
-    if (!selectedEcrnId) return;
+    if (!selectedEcrnId) {
+      return;
+    }
+
     setLoading(true);
+    setActionError("");
+
     try {
-      const batch = writeBatch(db);
-      const ecrnRef = doc(db, "ecrns", selectedEcrnId);
-      
-      // 1. Mark ECRN as Completed
-      batch.update(ecrnRef, {
-        status: "Completed",
-        closedAt: serverTimestamp()
-      });
-
-      // 2. Fetch all documents in this ECRN to update engineer stats
-      const docsSnap = await getDocs(collection(db, `ecrns/${selectedEcrnId}/documents`));
-      const docs = docsSnap.docs.map(d => d.data());
-
-      // 3. For each document that wasn't completed, decrement the engineer's active count
-      const engineerUpdates: Record<string, number> = {};
-      docs.forEach(d => {
-        if (d.status !== "Completed" && d.assignedEngineerUid) {
-          engineerUpdates[d.assignedEngineerUid] = (engineerUpdates[d.assignedEngineerUid] || 0) + 1;
-        }
-      });
-
-      Object.entries(engineerUpdates).forEach(([uid, count]) => {
-        const engRef = doc(db, "engineers", uid);
-        batch.update(engRef, {
-          activeDocuments: increment(-count)
-        });
-      });
-
-      await batch.commit();
+      await updateEcrnStatus(selectedEcrnId, "Completed");
       onClose();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to close ECRN.");
+    } catch (error) {
+      console.error(error);
+      setActionError(error instanceof Error ? error.message : "Failed to close ECRN.");
     } finally {
       setLoading(false);
     }
@@ -88,45 +71,53 @@ export default function CloseECRNModal({ onClose }: CloseECRNModalProps) {
           <div className="space-y-6">
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Select ECRN to Close</label>
-              <select 
+              <select
                 className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all dark:text-white font-bold"
                 value={selectedEcrnId}
-                onChange={e => setSelectedEcrnId(e.target.value)}
+                onChange={(event) => setSelectedEcrnId(event.target.value)}
                 disabled={fetching}
               >
-                <option value="">{fetching ? 'Fetching ECRNs...' : 'Choose an ECRN'}</option>
-                {ecrns.map(e => (
-                  <option key={e.id} value={e.id}>{e.ecrnNumber} — {e.productEngineerName}</option>
+                <option value="">{fetching ? "Fetching ECRNs..." : "Choose an ECRN"}</option>
+                {ecrns.map((ecrn) => (
+                  <option key={ecrn.id} value={ecrn.id}>
+                    {ecrn.ecrnNumber} - {ecrn.productEngineerName}
+                  </option>
                 ))}
               </select>
             </div>
 
-            {selectedEcrnId && (
+            {selectedEcrnId ? (
               <div className="flex gap-3 p-4 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold leading-relaxed">
                 <AlertTriangle size={18} className="shrink-0" />
                 <p>This action will mark the ECRN as Completed and set the closure timestamp. This cannot be undone.</p>
               </div>
-            )}
+            ) : null}
 
             <div className="grid grid-cols-2 gap-4 pt-4">
-              <button 
+              <button
                 onClick={onClose}
                 className="px-6 py-3.5 text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleCloseECRN}
                 disabled={!selectedEcrnId || loading}
                 className={`px-6 py-3.5 rounded-2xl font-bold transition-all shadow-lg active:scale-95 ${
                   selectedEcrnId && !loading
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/25' 
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/25"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
                 }`}
               >
-                {loading ? <Loader2 size={20} className="animate-spin mx-auto" /> : 'Confirm Close'}
+                {loading ? <Loader2 size={20} className="animate-spin mx-auto" /> : "Confirm Close"}
               </button>
             </div>
+
+            {actionError ? (
+              <p className="text-xs font-bold text-red-600 dark:text-red-400">
+                {actionError}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

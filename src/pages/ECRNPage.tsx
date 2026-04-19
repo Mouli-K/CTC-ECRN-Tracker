@@ -1,50 +1,96 @@
-import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, updateDoc, doc, serverTimestamp, orderBy } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, collectionGroup, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ECRN, ECRNStatus } from "../types";
-import { Search, Filter, Clock, CheckCircle2, HelpCircle, AlertCircle, User, Download } from "lucide-react";
+import {
+  Search,
+  Filter,
+  Clock,
+  CheckCircle2,
+  HelpCircle,
+  AlertCircle,
+  User,
+  Download,
+  type LucideIcon,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { exportECRNSummary } from "../utils/excelExport";
+import {
+  getDocumentEcrnIdFromPath,
+  mergeEcrnCounts,
+  normalizePriority,
+  type TrackerDocument,
+} from "../services/trackerData";
+import { updateEcrnStatus } from "../services/trackerWorkflow";
 
 export default function ECRNPage() {
   const navigate = useNavigate();
-  const [ecrns, setEcrns] = useState<ECRN[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rawEcrns, setRawEcrns] = useState<ECRN[]>([]);
+  const [documents, setDocuments] = useState<TrackerDocument[]>([]);
+  const [loadingEcrns, setLoadingEcrns] = useState(true);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [activeTab, setActiveTab] = useState<ECRNStatus | 'All'>("Running");
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    const q = query(collection(db, "ecrns"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setEcrns(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ECRN)));
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const unsubscribeEcrns = onSnapshot(
+      query(collection(db, "ecrns"), orderBy("createdAt", "desc")),
+      (snapshot) => {
+        setRawEcrns(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ECRN)));
+        setLoadingEcrns(false);
+      },
+    );
+    const unsubscribeDocuments = onSnapshot(
+      query(collectionGroup(db, "documents")),
+      (snapshot) => {
+        setDocuments(
+          snapshot.docs.map(
+            (docSnapshot) =>
+              ({
+                id: docSnapshot.id,
+                ecrnId: getDocumentEcrnIdFromPath(docSnapshot.ref.path),
+                ...docSnapshot.data(),
+              }) as TrackerDocument,
+          ),
+        );
+        setLoadingDocuments(false);
+      },
+    );
+
+    return () => {
+      unsubscribeEcrns();
+      unsubscribeDocuments();
+    };
   }, []);
 
   const handleStatusChange = async (ecrnId: string, newStatus: ECRNStatus) => {
     try {
-      const ecrnRef = doc(db, "ecrns", ecrnId);
-      const updates: any = { status: newStatus };
-      if (newStatus === "Completed") updates.closedAt = serverTimestamp();
-      await updateDoc(ecrnRef, updates);
+      await updateEcrnStatus(ecrnId, newStatus);
     } catch (err) {
       console.error("Error updating ECRN status:", err);
       alert("Failed to update status.");
     }
   };
 
+  const loading = loadingEcrns || loadingDocuments;
+  const ecrns = useMemo(
+    () => mergeEcrnCounts(rawEcrns, documents),
+    [documents, rawEcrns],
+  );
   const filteredEcrns = ecrns.filter(e => {
-    const matchesTab = activeTab === 'All' || e.status === activeTab;
+    const matchesTab =
+      activeTab === "All" ||
+      e.status === activeTab ||
+      (activeTab === "Query Hold" && e.status === "Pending");
     const matchesSearch = e.ecrnNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          e.productEngineerName.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
-  const tabs: { label: string, value: ECRNStatus | 'All', icon: any, color: string }[] = [
+  const tabs: { label: string, value: ECRNStatus | 'All', icon: LucideIcon, color: string }[] = [
     { label: "Running", value: "Running", icon: Clock, color: "text-blue-500" },
     { label: "With PE", value: "With PE", icon: HelpCircle, color: "text-purple-500" },
-    { label: "Query Hold", value: "Query Hold", icon: AlertCircle, color: "text-amber-500" },
+    { label: "Query Hold / Pending", value: "Query Hold", icon: AlertCircle, color: "text-amber-500" },
     { label: "Completed", value: "Completed", icon: CheckCircle2, color: "text-emerald-500" },
     { label: "All", value: "All", icon: Filter, color: "text-slate-400" },
   ];
@@ -122,7 +168,10 @@ export default function ECRNPage() {
                   <td colSpan={5} className="px-8 py-20 text-center text-slate-400 italic">No matching ECRNs found.</td>
                 </tr>
               ) : (
-                filteredEcrns.map((e) => (
+                filteredEcrns.map((e) => {
+                  const priorityLabel = normalizePriority(e.priority);
+
+                  return (
                   <tr 
                     key={e.id} 
                     className="group hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
@@ -135,17 +184,24 @@ export default function ECRNPage() {
                     </td>
                     <td onClick={() => navigate(`/ecrn/${e.id}`)} className="px-8 py-5">
                       <span className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest ${
-                        e.priority === 'High' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-100 dark:border-red-800/30' : 
-                        'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border border-blue-100 dark:border-blue-800/30'
+                        priorityLabel === 'High' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-100 dark:border-red-800/30' : 
+                        'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30'
                       }`}>
-                        {e.priority}
+                        {priorityLabel}
                       </span>
                     </td>
                     <td onClick={() => navigate(`/ecrn/${e.id}`)} className="px-8 py-5 text-center">
                       <div className="inline-flex flex-col items-center">
                          <span className="text-sm font-black text-slate-700 dark:text-slate-200">{e.completedDocuments} / {e.totalDocuments}</span>
                          <div className="w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-1 overflow-hidden">
-                           <div className="h-full bg-blue-600" style={{ width: `${(e.completedDocuments / e.totalDocuments) * 100}%` }} />
+                           <div
+                             className="h-full bg-blue-600"
+                             style={{
+                               width: `${Math.round(
+                                 (e.completedDocuments / (e.totalDocuments || 1)) * 100,
+                               )}%`,
+                             }}
+                           />
                          </div>
                       </div>
                     </td>
@@ -162,13 +218,15 @@ export default function ECRNPage() {
                          className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:border-blue-500 transition-all cursor-pointer"
                        >
                          <option value="Running">Running</option>
+                         <option value="Pending">Pending</option>
                          <option value="With PE">With PE</option>
                          <option value="Query Hold">Query Hold</option>
                          <option value="Completed">Completed</option>
                        </select>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

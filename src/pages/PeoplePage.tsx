@@ -1,14 +1,46 @@
-import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  collectionGroup,
+  doc,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 import { db } from "../firebase";
-import type { Engineer } from "../types";
-import { Search, UserCheck, UserMinus, SearchCheck, Briefcase, CheckCircle2, User, Hash, ExternalLink, Download, Plus, X, Loader2 } from "lucide-react";
+import type { ECRN, Engineer } from "../types";
+import {
+  Search,
+  UserCheck,
+  UserMinus,
+  SearchCheck,
+  Briefcase,
+  CheckCircle2,
+  User,
+  Hash,
+  ExternalLink,
+  Download,
+  Plus,
+  X,
+  Loader2,
+  type LucideIcon,
+} from "lucide-react";
 import EngineerDetailDrawer from "../components/EngineerDetailDrawer";
 import { exportEngineerWorkload } from "../utils/excelExport";
+import {
+  getDocumentEcrnIdFromPath,
+  mergeEngineerCounts,
+  type TrackerDocument,
+} from "../services/trackerData";
 
 export default function PeoplePage() {
-  const [engineers, setEngineers] = useState<Engineer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rawEngineers, setRawEngineers] = useState<Engineer[]>([]);
+  const [rawEcrns, setRawEcrns] = useState<ECRN[]>([]);
+  const [documents, setDocuments] = useState<TrackerDocument[]>([]);
+  const [loadingEngineers, setLoadingEngineers] = useState(true);
+  const [loadingEcrns, setLoadingEcrns] = useState(true);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEngineerUid, setSelectedEngineerUid] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -18,12 +50,36 @@ export default function PeoplePage() {
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, "engineers"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setEngineers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as Engineer)));
-      setLoading(false);
+    const unsubscribeEngineers = onSnapshot(query(collection(db, "engineers")), (snapshot) => {
+      setRawEngineers(snapshot.docs.map((doc) => ({ uid: doc.id, ...doc.data() } as Engineer)));
+      setLoadingEngineers(false);
     });
-    return () => unsubscribe();
+    const unsubscribeEcrns = onSnapshot(query(collection(db, "ecrns")), (snapshot) => {
+      setRawEcrns(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ECRN)));
+      setLoadingEcrns(false);
+    });
+    const unsubscribeDocuments = onSnapshot(
+      query(collectionGroup(db, "documents")),
+      (snapshot) => {
+        setDocuments(
+          snapshot.docs.map(
+            (docSnapshot) =>
+              ({
+                id: docSnapshot.id,
+                ecrnId: getDocumentEcrnIdFromPath(docSnapshot.ref.path),
+                ...docSnapshot.data(),
+              }) as TrackerDocument,
+          ),
+        );
+        setLoadingDocuments(false);
+      },
+    );
+
+    return () => {
+      unsubscribeEngineers();
+      unsubscribeEcrns();
+      unsubscribeDocuments();
+    };
   }, []);
 
   const handleAddEngineer = async (e: React.FormEvent) => {
@@ -50,16 +106,52 @@ export default function PeoplePage() {
     }
   };
 
-  const filteredEngineers = engineers.filter(eng => {
-    const search = searchQuery.toLowerCase();
-    return (
-      eng.name.toLowerCase().includes(search) ||
-      eng.employeeId.toLowerCase().includes(search) ||
-      eng.email.toLowerCase().includes(search)
-    );
-  });
+  const loading = loadingEngineers || loadingEcrns || loadingDocuments;
+  const ecrnStatusById = useMemo(
+    () =>
+      Object.fromEntries(rawEcrns.map((ecrn) => [ecrn.id, ecrn.status])) as Record<
+        string,
+        ECRN["status"]
+      >,
+    [rawEcrns],
+  );
+  const engineers = useMemo(
+    () => mergeEngineerCounts(rawEngineers, documents, ecrnStatusById),
+    [documents, ecrnStatusById, rawEngineers],
+  );
+  const filteredEngineers = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
 
-  const EngineerList = ({ list, title, icon: Icon, colorClass, badgeClass }: { list: Engineer[], title: string, icon: any, colorClass: string, badgeClass: string }) => (
+    if (!normalizedSearch) {
+      return engineers;
+    }
+
+    const matchedEcrnIds = new Set(
+      rawEcrns
+        .filter((ecrn) => ecrn.ecrnNumber.toLowerCase().includes(normalizedSearch))
+        .map((ecrn) => ecrn.id),
+    );
+    const matchedEngineerIdsFromAssignments = new Set(
+      documents
+        .filter(
+          (trackerDocument) =>
+            trackerDocument.documentNumber.toLowerCase().includes(normalizedSearch) ||
+            matchedEcrnIds.has(trackerDocument.ecrnId),
+        )
+        .map((trackerDocument) => trackerDocument.assignedEngineerUid),
+    );
+
+    return engineers.filter((engineer) => {
+      const matchesProfile =
+        engineer.name.toLowerCase().includes(normalizedSearch) ||
+        engineer.employeeId.toLowerCase().includes(normalizedSearch) ||
+        (engineer.email ?? "").toLowerCase().includes(normalizedSearch);
+
+      return matchesProfile || matchedEngineerIdsFromAssignments.has(engineer.uid);
+    });
+  }, [documents, engineers, rawEcrns, searchQuery]);
+
+  const EngineerList = ({ list, title, icon: Icon, colorClass, badgeClass }: { list: Engineer[], title: string, icon: LucideIcon, colorClass: string, badgeClass: string }) => (
     <div className="space-y-6">
       <div className="flex items-center gap-3 ml-2">
         <Icon size={18} className={colorClass} />

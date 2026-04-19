@@ -1,8 +1,14 @@
-import { useState, useEffect } from "react";
-import { collection, query, getDocs, writeBatch, doc, Timestamp, increment, onSnapshot } from "firebase/firestore";
+import { useState, useEffect, useMemo } from "react";
+import { collection, collectionGroup, onSnapshot, query } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import type { Engineer, Priority } from "../types";
+import type { ECRN, Engineer, Priority } from "../types";
 import { X, ChevronRight, ChevronLeft, Loader2, Info, AlertTriangle } from "lucide-react";
+import { createEcrn } from "../services/trackerWorkflow";
+import {
+  buildEngineerHighPriorityActiveCounts,
+  getDocumentEcrnIdFromPath,
+  type TrackerDocument,
+} from "../services/trackerData";
 
 interface StartECRNWizardProps {
   onClose: () => void;
@@ -12,6 +18,9 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [engineers, setEngineers] = useState<Engineer[]>([]);
+  const [ecrnsById, setEcrnsById] = useState<Record<string, ECRN>>({});
+  const [trackerDocuments, setTrackerDocuments] = useState<TrackerDocument[]>([]);
+  const [submissionError, setSubmissionError] = useState("");
   
   const currentUser = auth.currentUser;
   const currentUserName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "Unknown User";
@@ -19,7 +28,7 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
   // Step 1 Data
   const [ecrnDetails, setEcrnDetails] = useState({
     ecrnNumber: "",
-    priority: "Normal" as Priority,
+    priority: "Low" as Priority,
     deadline: "",
     reasonForChange: "",
     stockAction: "",
@@ -35,88 +44,127 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
   }>>([{ documentNumber: "", assignedEngineerUid: "", estimatedHours: 1 }]);
 
   useEffect(() => {
-    const q = query(collection(db, "engineers"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeEngineers = onSnapshot(query(collection(db, "engineers")), (snapshot) => {
       setEngineers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as Engineer)));
     });
-    return () => unsubscribe();
+    const unsubscribeEcrns = onSnapshot(query(collection(db, "ecrns")), (snapshot) => {
+      setEcrnsById(
+        Object.fromEntries(
+          snapshot.docs.map((docSnapshot) => [
+            docSnapshot.id,
+            { id: docSnapshot.id, ...docSnapshot.data() } as ECRN,
+          ]),
+        ),
+      );
+    });
+    const unsubscribeDocuments = onSnapshot(
+      query(collectionGroup(db, "documents")),
+      (snapshot) => {
+        setTrackerDocuments(
+          snapshot.docs.map(
+            (docSnapshot) =>
+              ({
+                id: docSnapshot.id,
+                ecrnId: getDocumentEcrnIdFromPath(docSnapshot.ref.path),
+                ...docSnapshot.data(),
+              }) as TrackerDocument,
+          ),
+        );
+      },
+    );
+
+    return () => {
+      unsubscribeEngineers();
+      unsubscribeEcrns();
+      unsubscribeDocuments();
+    };
   }, []);
 
   useEffect(() => {
-    // Sync documents array with numDocs
-    const newDocs = [...documents];
-    if (numDocs > newDocs.length) {
-      for (let i = newDocs.length; i < numDocs; i++) {
-        newDocs.push({ documentNumber: "", assignedEngineerUid: "", estimatedHours: 1 });
+    setDocuments((currentDocuments) => {
+      const nextDocuments = [...currentDocuments];
+
+      if (numDocs > nextDocuments.length) {
+        for (let index = nextDocuments.length; index < numDocs; index += 1) {
+          nextDocuments.push({
+            documentNumber: "",
+            assignedEngineerUid: "",
+            estimatedHours: 1,
+          });
+        }
+      } else {
+        nextDocuments.splice(numDocs);
       }
-    } else {
-      newDocs.splice(numDocs);
-    }
-    setDocuments(newDocs);
+
+      return nextDocuments;
+    });
   }, [numDocs]);
 
   const handleCreateECRN = async () => {
     setLoading(true);
+    setSubmissionError("");
     try {
-      const batch = writeBatch(db);
-      const ecrnRef = doc(collection(db, "ecrns"));
-      
-      const ecrnData = {
-        ...ecrnDetails,
-        status: "Running",
-        createdAt: Timestamp.now(),
-        closedAt: null,
-        totalDocuments: numDocs,
-        completedDocuments: 0,
-        deadline: ecrnDetails.deadline ? Timestamp.fromDate(new Date(ecrnDetails.deadline)) : null
-      };
-
-      batch.set(ecrnRef, ecrnData);
-
-      // Map to track total document counts per engineer in this batch
-      const engineerActiveCounts: Record<string, number> = {};
-
-      documents.forEach(d => {
-        const docRef = doc(collection(db, `ecrns/${ecrnRef.id}/documents`));
-        const engineer = engineers.find(e => e.uid === d.assignedEngineerUid);
-        
-        batch.set(docRef, {
-          ...d,
-          assignedEngineerName: engineer?.name || "Unknown",
-          status: "WIP",
-          actualHours: null,
-          statusHistory: [{
-            status: "WIP",
-            changedAt: Timestamp.now(),
-            changedBy: currentUserName
-          }],
-          createdAt: Timestamp.now(),
-          completedAt: null
-        });
-
-        if (d.assignedEngineerUid) {
-          engineerActiveCounts[d.assignedEngineerUid] = (engineerActiveCounts[d.assignedEngineerUid] || 0) + 1;
-        }
+      await createEcrn({
+        details: ecrnDetails,
+        documents,
+        engineers,
+        actorName: currentUserName,
       });
-
-      // Update engineer active counts atomically based on total docs assigned in this ECRN
-      Object.entries(engineerActiveCounts).forEach(([uid, count]) => {
-        const engRef = doc(db, "engineers", uid);
-        batch.update(engRef, { activeDocuments: increment(count) });
-      });
-
-      await batch.commit();
       onClose();
     } catch (err) {
       console.error(err);
-      alert("Failed to create ECRN. Please check console for errors.");
+      setSubmissionError(
+        err instanceof Error ? err.message : "Failed to create ECRN. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const isStep1Valid = ecrnDetails.ecrnNumber && ecrnDetails.reasonForChange && ecrnDetails.stockAction && ecrnDetails.productEngineerName;
+  const isStep1Valid =
+    ecrnDetails.ecrnNumber &&
+    ecrnDetails.reasonForChange &&
+    ecrnDetails.stockAction &&
+    ecrnDetails.productEngineerName;
   const isStep2Valid = documents.every(d => d.documentNumber && d.assignedEngineerUid && d.estimatedHours > 0);
+  const engineerHighPriorityActiveCounts = useMemo(
+    () => buildEngineerHighPriorityActiveCounts(trackerDocuments, ecrnsById),
+    [ecrnsById, trackerDocuments],
+  );
+  const lowPriorityConflicts = useMemo(() => {
+    if (ecrnDetails.priority !== "Low") {
+      return [];
+    }
+
+    return documents
+      .map((document, index) => {
+        const engineer = engineers.find(
+          (candidateEngineer) => candidateEngineer.uid === document.assignedEngineerUid,
+        );
+        const highPriorityActiveDocuments = engineer
+          ? engineerHighPriorityActiveCounts[engineer.uid] || 0
+          : 0;
+
+        if (!engineer || highPriorityActiveDocuments <= 0) {
+          return null;
+        }
+
+        return {
+          rowNumber: index + 1,
+          engineerName: engineer.name,
+          highPriorityActiveDocuments,
+        };
+      })
+      .filter(
+        (
+          conflict,
+        ): conflict is {
+          rowNumber: number;
+          engineerName: string;
+          highPriorityActiveDocuments: number;
+        } => Boolean(conflict),
+      );
+  }, [documents, ecrnDetails.priority, engineerHighPriorityActiveCounts, engineers]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-300">
@@ -157,7 +205,7 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Priority</label>
                   <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-                    {['High', 'Normal'].map((p) => (
+                    {['High', 'Low'].map((p) => (
                       <button
                         key={p}
                         onClick={() => setEcrnDetails({...ecrnDetails, priority: p as Priority})}
@@ -244,6 +292,27 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
                 </div>
               </div>
 
+              {lowPriorityConflicts.length > 0 ? (
+                <div className="p-5 rounded-[28px] border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-black uppercase tracking-widest">Admin Alert</p>
+                      <p className="text-sm font-semibold mt-1">
+                        This low-priority ECRN is being assigned to engineers who already have active high-priority work.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-1 text-xs font-bold">
+                    {lowPriorityConflicts.map((conflict) => (
+                      <p key={`${conflict.rowNumber}-${conflict.engineerName}`}>
+                        Row {conflict.rowNumber}: {conflict.engineerName} already has {conflict.highPriorityActiveDocuments} active high-priority document{conflict.highPriorityActiveDocuments === 1 ? "" : "s"}.
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="overflow-hidden border border-slate-100 dark:border-slate-800 rounded-[32px]">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
@@ -255,7 +324,17 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                    {documents.map((d, i) => (
+                    {documents.map((d, i) => {
+                      const assignedEngineer = engineers.find(
+                        (engineer) => engineer.uid === d.assignedEngineerUid,
+                      );
+                      const highPriorityActiveDocuments = assignedEngineer
+                        ? engineerHighPriorityActiveCounts[assignedEngineer.uid] || 0
+                        : 0;
+                      const shouldWarnLowPriorityAssignment =
+                        ecrnDetails.priority === "Low" && highPriorityActiveDocuments > 0;
+
+                      return (
                       <tr key={i} className="bg-white dark:bg-slate-900">
                         <td className="px-6 py-4 text-xs font-bold text-slate-300">{i + 1}</td>
                         <td className="px-6 py-4">
@@ -274,7 +353,11 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
                         <td className="px-6 py-4">
                           <div className="space-y-2">
                             <select 
-                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl focus:border-blue-500 outline-none text-sm transition-all"
+                              className={`w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border rounded-xl focus:border-blue-500 outline-none text-sm transition-all ${
+                                shouldWarnLowPriorityAssignment
+                                  ? "border-red-300 dark:border-red-900/50 text-red-700 dark:text-red-300"
+                                  : "border-slate-100 dark:border-slate-700"
+                              }`}
                               value={d.assignedEngineerUid}
                               onChange={e => {
                                 const next = [...documents];
@@ -285,16 +368,18 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
                               <option value="">Select Engineer</option>
                               {engineers.map(eng => (
                                 <option key={eng.uid} value={eng.uid}>
-                                  {eng.name} (Active: {eng.activeDocuments || 0})
+                                  {eng.name}
+                                  {engineerHighPriorityActiveCounts[eng.uid]
+                                    ? ` (High Priority Active: ${engineerHighPriorityActiveCounts[eng.uid]})`
+                                    : " (Available)"}
                                 </option>
                               ))}
                             </select>
                             
-                            {/* High Priority Warning - Visible if ECRN is High Priority AND Engineer is already busy */}
-                            {ecrnDetails.priority === 'High' && d.assignedEngineerUid && (engineers.find(e => e.uid === d.assignedEngineerUid)?.activeDocuments || 0) > 0 && (
-                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-lg border border-amber-100 dark:border-amber-800/30">
+                            {shouldWarnLowPriorityAssignment && (
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-lg border border-red-100 dark:border-red-800/30">
                                 <AlertTriangle size={12} />
-                                <span>High Workload Warning</span>
+                                <span>Admin notice: this engineer is still handling active high-priority work</span>
                               </div>
                             )}
                           </div>
@@ -314,7 +399,8 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
                           />
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -324,6 +410,13 @@ export default function StartECRNWizard({ onClose }: StartECRNWizardProps) {
 
         {/* Footer */}
         <div className="px-10 py-8 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
+          {submissionError ? (
+            <div className="max-w-md text-xs font-bold text-red-600 dark:text-red-400">
+              {submissionError}
+            </div>
+          ) : (
+            <div />
+          )}
           <button 
             onClick={() => step === 1 ? onClose() : setStep(1)}
             className="flex items-center gap-2 px-6 py-3 text-slate-600 dark:text-slate-400 font-bold hover:text-slate-900 dark:hover:text-white transition-colors"

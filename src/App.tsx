@@ -8,6 +8,8 @@ import ECRNDetailPage from "./pages/ECRNDetailPage";
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./firebase";
+import { runIntegritySyncOnce } from "./services/trackerWorkflow";
+import emersonLogo from "./assets/emerson-logo.png";
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -25,6 +27,16 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    void runIntegritySyncOnce().catch((error) => {
+      console.error("Failed to reconcile tracker counters:", error);
+    });
+  }, [user]);
+
+  useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
       localStorage.setItem("theme", "dark");
@@ -40,8 +52,8 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-28 bg-slate-900 dark:bg-white flex items-center justify-center rounded-lg animate-pulse">
-             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white dark:text-slate-900">Emerson</span>
+          <div className="h-14 w-36 bg-white dark:bg-slate-950 flex items-center justify-center rounded-2xl animate-pulse border border-slate-200 dark:border-slate-800 shadow-lg">
+             <img src={emersonLogo} alt="Emerson Logo" className="h-8 w-auto object-contain" />
           </div>
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Securely Authenticating...</p>
         </div>

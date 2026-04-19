@@ -3,6 +3,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "fire
 import { auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import { Lock, User, ShieldCheck } from "lucide-react";
+import emersonLogo from "../assets/emerson-logo.png";
 
 export default function LoginPage() {
   const [employeeId, setEmployeeId] = useState("");
@@ -32,11 +33,14 @@ export default function LoginPage() {
         await signInWithEmailAndPassword(auth, email, password);
       }
       navigate("/home");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      if (err.code === 'auth/user-not-found' && !isFirstTime) {
+      const errorCode =
+        typeof err === "object" && err && "code" in err ? String(err.code) : "";
+
+      if (errorCode === 'auth/user-not-found' && !isFirstTime) {
         setError("Account not found. Use 'First Time Setup' to initialize.");
-      } else if (err.code === 'auth/email-already-in-use' && isFirstTime) {
+      } else if (errorCode === 'auth/email-already-in-use' && isFirstTime) {
         setError("Account already exists. Please sign in.");
       } else {
         setError("Authentication failed. Please verify your credentials.");
@@ -54,8 +58,8 @@ export default function LoginPage() {
 
       <div className="w-full max-w-[480px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white dark:border-slate-800 p-8 md:p-12 relative z-10 transition-all duration-300">
         <div className="flex flex-col items-center mb-12 text-center">
-          <div className="h-14 w-36 bg-slate-900 dark:bg-white flex items-center justify-center rounded-2xl shadow-xl mb-10 transform transition-transform hover:scale-105">
-             <span className="text-[11px] font-black uppercase tracking-[0.3em] text-white dark:text-slate-900">Emerson</span>
+          <div className="h-16 w-40 bg-white dark:bg-slate-950 flex items-center justify-center rounded-2xl shadow-xl mb-10 transform transition-transform hover:scale-105 border border-slate-200/80 dark:border-slate-800">
+             <img src={emersonLogo} alt="Emerson Logo" className="h-9 w-auto object-contain" />
           </div>
           <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight mb-3">
             {isFirstTime ? "Initialize" : "Sign In"}
