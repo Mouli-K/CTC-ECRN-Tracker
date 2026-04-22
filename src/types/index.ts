@@ -1,7 +1,15 @@
 import { Timestamp } from "firebase/firestore";
 
 export type ECRNStatus = "Running" | "Completed" | "With PE" | "Query Hold" | "Pending";
-export type DocumentStatus = "WIP" | "Primary Check" | "Secondary Check" | "With PE" | "Completed";
+export type DocumentStatus =
+  | "WIP"
+  | "Primary Check"
+  | "Feedback from Primary Check"
+  | "Secondary Check"
+  | "Feedback from Secondary Check"
+  | "With PE"
+  | "Feedback from PE"
+  | "Completed";
 export type Priority = "High" | "Medium" | "Low" | "Normal";
 
 export interface ECRN {
