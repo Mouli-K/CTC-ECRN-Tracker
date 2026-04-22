@@ -107,27 +107,31 @@ export default function DocumentDrawer({ ecrnId, docId, onClose }: DocumentDrawe
 
           <div className="space-y-6">
             <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 ml-1">Workflow Status</h4>
-            <div className="flex items-center justify-between relative px-2">
-              <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 dark:bg-slate-800 -translate-y-1/2 -z-10" />
+            <div className="space-y-2 relative pl-4">
+              <div className="absolute left-[18px] top-4 bottom-4 w-0.5 bg-slate-100 dark:bg-slate-800" />
               {DOCUMENT_STAGES.map((stage, index) => {
                 const isCompleted = index < currentStageIndex;
                 const isCurrent = index === currentStageIndex;
+                const isFeedback = stage.toLowerCase().startsWith("feedback");
 
                 return (
-                  <div key={stage} className="flex flex-col items-center gap-3 relative group">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-500 border-2 ${
+                  <div key={stage} className="flex items-center gap-4 relative">
+                    <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center transition-all duration-500 border-2 z-10 ${
                       isCompleted
                         ? "bg-emerald-500 border-emerald-500 text-white"
                         : isCurrent
                           ? "bg-white dark:bg-slate-900 border-blue-600 text-blue-600 shadow-lg shadow-blue-500/20"
                           : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400"
                     }`}>
-                      {isCompleted ? <Check size={16} /> : <span className="text-[10px] font-bold">{index + 1}</span>}
+                      {isCompleted ? <Check size={14} /> : <span className="text-[10px] font-bold">{index + 1}</span>}
                     </div>
-                    <span className={`text-[9px] font-black uppercase tracking-tighter absolute -bottom-6 whitespace-nowrap ${
-                      isCurrent ? "text-blue-600 dark:text-blue-400" : "text-slate-400"
-                    }`}>
+                    <span className={`text-xs font-black uppercase tracking-tight ${
+                      isCurrent ? "text-blue-600 dark:text-blue-400" :
+                      isCompleted ? "text-emerald-500" :
+                      "text-slate-400"
+                    } ${isFeedback ? "italic" : ""}`}>
                       {stage}
+                      {isCurrent && <span className="ml-2 text-[9px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-md normal-case not-italic">Current</span>}
                     </span>
                   </div>
                 );
@@ -135,7 +139,7 @@ export default function DocumentDrawer({ ecrnId, docId, onClose }: DocumentDrawe
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-6 pt-10">
+          <div className="grid grid-cols-2 gap-6 pt-2">
             <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Assigned To</p>
               <div className="flex items-center gap-3 mt-2">

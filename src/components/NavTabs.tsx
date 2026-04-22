@@ -1,12 +1,21 @@
 import { NavLink } from "react-router-dom";
-import { Home, Users, FileText } from "lucide-react";
+import { Home, Users, FileText, LayoutDashboard } from "lucide-react";
+import { useUserRole } from "../contexts/UserRoleContext";
 
 export default function NavTabs() {
-  const tabs = [
+  const { role } = useUserRole();
+
+  const adminTabs = [
     { name: "Home", path: "/home", icon: Home },
     { name: "People", path: "/people", icon: Users },
     { name: "ECRN", path: "/ecrn", icon: FileText },
   ];
+
+  const engineerTabs = [
+    { name: "My Work", path: "/dashboard", icon: LayoutDashboard },
+  ];
+
+  const tabs = role === "engineer" ? engineerTabs : adminTabs;
 
   return (
     <nav className="flex items-center gap-1.5 p-1.5 bg-slate-100/80 dark:bg-slate-800/80 rounded-2xl w-fit transition-all duration-300 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50">
