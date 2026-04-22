@@ -320,6 +320,12 @@ export default function ECRNDetailPage() {
                     <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${
                       doc.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30' :
                       doc.status === 'WIP' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border border-blue-100 dark:border-blue-800/30' :
+                      doc.status === 'Primary Check' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30' :
+                      doc.status === 'Feedback from Primary Check' ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 border border-orange-100 dark:border-orange-800/30' :
+                      doc.status === 'Secondary Check' ? 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400 border border-violet-100 dark:border-violet-800/30' :
+                      doc.status === 'Feedback from Secondary Check' ? 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 border border-purple-100 dark:border-purple-800/30' :
+                      doc.status === 'With PE' ? 'bg-teal-50 text-teal-600 dark:bg-teal-900/20 dark:text-teal-400 border border-teal-100 dark:border-teal-800/30' :
+                      doc.status === 'Feedback from PE' ? 'bg-cyan-50 text-cyan-600 dark:bg-cyan-900/20 dark:text-cyan-400 border border-cyan-100 dark:border-cyan-800/30' :
                       'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30'
                     }`}>
                       {doc.status}
