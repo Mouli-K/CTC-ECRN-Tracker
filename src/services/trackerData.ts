@@ -25,7 +25,7 @@ export const isActiveEcrnStatus = (status?: ECRNStatus) =>
 export const isActiveDocumentStatus = (
   status: Document["status"],
   ecrnStatus?: ECRNStatus,
-) => status === "WIP" && isActiveEcrnStatus(ecrnStatus);
+) => status !== "Completed" && isActiveEcrnStatus(ecrnStatus);
 
 export const buildEcrnCounts = (documents: TrackerDocument[]) => {
   const counts: Record<string, EcrnDocumentCounts> = {};

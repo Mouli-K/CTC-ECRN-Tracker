@@ -27,8 +27,11 @@ const ECRN_NUMBER_INDEX_COLLECTION = "ecrnNumberIndex";
 export const DOCUMENT_STAGES: DocumentStatus[] = [
   "WIP",
   "Primary Check",
+  "Feedback from Primary Check",
   "Secondary Check",
+  "Feedback from Secondary Check",
   "With PE",
+  "Feedback from PE",
   "Completed",
 ];
 
