@@ -31,13 +31,19 @@ export function UserRoleProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const employeeId = user.email?.split("@")[0] ?? "";
+        const employeeIdRaw = user.email?.split("@")[0] ?? "";
+        // Auth emails are lowercase; Firestore employeeId may be uppercase (e.g. "E1550484")
         const snapshot = await getDocs(
-          query(collection(db, "engineers"), where("employeeId", "==", employeeId))
+          query(collection(db, "engineers"), where("employeeId", "==", employeeIdRaw.toUpperCase()))
         );
 
-        if (!snapshot.empty) {
-          const engineerDoc = snapshot.docs[0];
+        // Fallback: try as-is if uppercase didn't match
+        const finalSnapshot = !snapshot.empty
+          ? snapshot
+          : await getDocs(query(collection(db, "engineers"), where("employeeId", "==", employeeIdRaw)));
+
+        if (!finalSnapshot.empty) {
+          const engineerDoc = finalSnapshot.docs[0];
           const engineerData = { uid: engineerDoc.id, ...engineerDoc.data() } as Engineer;
           setEngineer(engineerData);
           setRole("engineer");
